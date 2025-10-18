@@ -15,10 +15,11 @@ void main(){
     game.setCellEntity(Entity.CLIFF, 3, 3);
 
     game.setCellEntity(Entity.RESOURCE_1,0, 3 );
-    game.setCellEntity(Entity.RESOURCE_1, 3,  1);
-    game.setCellEntity(Entity.RESOURCE_1,0 , 5 );
-    game.setCellEntity(Entity.RESOURCE_1,3,  5);
-    game.setCellEntity(Entity.RESOURCE_1,0,  5);
+    game.setCellEntity(Entity.RESOURCE_1,0, 5 );
+    game.setCellEntity(Entity.RESOURCE_1,3, 1 );
+    game.setCellEntity(Entity.RESOURCE_1,3, 5 );
+    game.setCellEntity(Entity.RESOURCE_1,4, 3 );
+
 
 
     do {
@@ -44,20 +45,20 @@ private void drawGrid() {
     int K = grid.length;
 
     // Print column headers
-    System.out.print("  ");
+    System.out.print("\t");
     for (int j = 0; j < K; j++) {
-        System.out.print(j + 1 + " ");
+        System.out.print(j + 1 + "\t");
     }
     System.out.println();
 
     // Print rows in reverse (bottom-left is start)
     for (int i = K - 1; i >= 0; i--) {
-        System.out.print(i + 1 + " ");
+        System.out.print(i + 1 + "\t");
 
         for (int j = 0; j < K; j++) {
             Cell cell = grid[i][j];
             String symbol = getCellSymbol(cell, i, j, playerX, playerY, grid, K);
-            System.out.print(symbol + " ");
+            System.out.print(symbol + "\t");
         }
         System.out.println();
     }
@@ -80,6 +81,8 @@ private String getCellSymbol(Cell cell, int row, int col, int playerX, int playe
             return "C";
         } else if (entity == Entity.RESOURCE_1) {
             return "R1";
+        } else if (isAdjacentToCliff(row, col)) {
+            return "!";
         }
         return "*";
     }
