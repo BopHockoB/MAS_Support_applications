@@ -1,6 +1,5 @@
-# Modeling the mine game and exhaustively enumerating all distinct terminal histories (outcomes).
-# This code is intentionally verbose and annotated so you can follow the logic.
-# It implements reasonable interpretations of ambiguous rules from the conversation
+# Modeling the mine game and enumerating all distinct terminal histories (outcomes).
+# It implements reasonable interpretations of ambiguous rules
 # (see assumptions printed after the enumeration).
 
 from copy import deepcopy
