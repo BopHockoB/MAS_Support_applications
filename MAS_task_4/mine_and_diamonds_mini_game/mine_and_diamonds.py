@@ -97,74 +97,133 @@ class MineGameTree:
 
     def filter_sensible_actions(self, player: str, actions: List[str], state: GameState) -> List[str]:
         """
-        Filter actions to only those that make strategic sense.
-        Pruning rules:
-        1. If all diamonds collected and at exit with positive utility -> must exit
-        2. If all diamonds collected and not at exit -> only moves towards exit are sensible
-        3. If all diamonds collected -> no staying (pointless delay)
-        4. If robot has negative utility and could exit -> staying is pointless
+        Filter actions to allow diverse strategies (hostile vs defensive).
+
+        Allows multiple playstyles:
+        - HOSTILE: Move toward opponent to crush them, block their path, stay to ambush
+        - DEFENSIVE: Collect diamonds safely, exit early with positive score, avoid opponent
+        - OPPORTUNISTIC: Balance between diamond collection and opponent interaction
+
+        Only removes truly irrational moves that no strategy would justify.
         """
         if not self.prune_nonsensical or not actions:
             return actions
 
         pos = state.pos[player]
         other = "R2" if player == "R1" else "R1"
-        all_diamonds_collected = len(state.diamonds) == 0
-        at_exit = pos in EXITS
-        has_positive_utility = state.utility[player] > 0
+        other_pos = state.pos.get(other)
         other_exited = state.exited[other]
 
-        # Rule 1: All diamonds collected, at exit, positive utility -> MUST exit
-        if all_diamonds_collected and at_exit and has_positive_utility:
+        at_exit = pos in EXITS
+        my_utility = state.utility[player]
+        other_utility = state.utility[other]
+
+        all_diamonds_collected = len(state.diamonds) == 0
+        diamonds_remain = len(state.diamonds) > 0
+
+        rational_moves = []
+
+        # MANDATORY: If forced to act in certain situations
+        # Rule 1: All diamonds gone, at exit, have positive utility -> MUST exit (no other rational option)
+        if all_diamonds_collected and at_exit and my_utility > 0 and other_exited:
             return ["E"]
 
-        # Rule 2: All diamonds collected, at exit, other player exited -> exit (no reason to stay)
-        if all_diamonds_collected and at_exit and other_exited:
+        # Rule 2: All diamonds gone, both players have exited or no moves benefit anyone
+        if all_diamonds_collected and other_exited and at_exit:
             return ["E"]
 
-        # Rule 3: All diamonds collected -> filter out staying (pointless)
-        if all_diamonds_collected:
-            actions = [a for a in actions if a != "S"]
+        # Now allow diverse strategies by categorizing moves:
 
-        # Rule 4: All diamonds collected, not at exit -> only moves towards nearest exit
-        if all_diamonds_collected and not at_exit and not other_exited:
-            # Find direction to nearest exit
-            sensible_moves = []
-            if "E" in actions:
-                sensible_moves.append("E")
+        for action in actions:
+            reasons = []  # Track why this move is rational
 
-            # Calculate distance to exits
-            dist_to_exits = {exit_pos: abs(pos - exit_pos) for exit_pos in EXITS}
-            nearest_exit = min(dist_to_exits, key=dist_to_exits.get)
+            if action == "E":
+                # DEFENSIVE: Exit to secure positive score
+                if my_utility > 0:
+                    reasons.append("defensive_exit")
+                # DEFENSIVE: Exit to avoid further negative utility
+                if my_utility < 0 and not diamonds_remain:
+                    reasons.append("cut_losses")
+                # NEUTRAL: Only sensible move if diamonds gone
+                if all_diamonds_collected:
+                    reasons.append("game_over")
 
-            if nearest_exit < pos and "L" in actions:
-                sensible_moves.append("L")
-            elif nearest_exit > pos and "R" in actions:
-                sensible_moves.append("R")
-            elif nearest_exit == pos and "E" in actions:
-                sensible_moves.append("E")
+            elif action == "L" or action == "R":
+                new_pos = pos - 1 if action == "L" else pos + 1
 
-            if sensible_moves:
-                return sensible_moves
+                # HOSTILE: Move toward opponent to crush them
+                if other_pos and not other_exited:
+                    current_dist = abs(pos - other_pos)
+                    new_dist = abs(new_pos - other_pos)
+                    if new_dist < current_dist:
+                        reasons.append("hostile_approach")
+                    # Can crush opponent in one move
+                    if new_pos == other_pos:
+                        reasons.append("hostile_crush")
 
-        # Rule 5: If other robot exited and all diamonds collected, only exit if at exit
-        if other_exited and all_diamonds_collected:
-            if at_exit:
-                return ["E"]
-            # Otherwise move toward exit
-            sensible_moves = []
-            dist_to_exits = {exit_pos: abs(pos - exit_pos) for exit_pos in EXITS}
-            nearest_exit = min(dist_to_exits, key=dist_to_exits.get)
+                # DEFENSIVE/OPPORTUNISTIC: Move toward diamonds
+                if diamonds_remain:
+                    for diamond_pos in state.diamonds:
+                        current_dist = abs(pos - diamond_pos)
+                        new_dist = abs(new_pos - diamond_pos)
+                        if new_dist < current_dist:
+                            reasons.append("collect_diamond")
+                            break
 
-            if nearest_exit < pos and "L" in actions:
-                sensible_moves.append("L")
-            elif nearest_exit > pos and "R" in actions:
-                sensible_moves.append("R")
+                # DEFENSIVE: Move toward exit when diamonds collected
+                if all_diamonds_collected and my_utility > 0:
+                    for exit_pos in EXITS:
+                        current_dist = abs(pos - exit_pos)
+                        new_dist = abs(new_pos - exit_pos)
+                        if new_dist < current_dist:
+                            reasons.append("defensive_exit_approach")
+                            break
 
-            if sensible_moves:
-                return sensible_moves
+                # DEFENSIVE: Move away from opponent to avoid crush
+                if other_pos and not other_exited:
+                    current_dist = abs(pos - other_pos)
+                    new_dist = abs(new_pos - other_pos)
+                    if new_dist > current_dist and my_utility > other_utility:
+                        reasons.append("defensive_evade")
 
-        return actions
+                # HOSTILE: Block opponent's path to diamond
+                if diamonds_remain and other_pos and not other_exited:
+                    for diamond_pos in state.diamonds:
+                        # Check if new position blocks opponent's direct path
+                        if other_pos < diamond_pos <= new_pos or other_pos > diamond_pos >= new_pos:
+                            reasons.append("hostile_block")
+                            break
+
+            elif action == "S":
+                # HOSTILE: Stay to ambush opponent
+                if other_pos and not other_exited:
+                    if abs(pos - other_pos) <= 2:  # Opponent nearby
+                        reasons.append("hostile_ambush")
+
+                # DEFENSIVE: Stay at strategic position (near diamond)
+                if pos in state.diamonds:
+                    reasons.append("defensive_guard_diamond")
+
+                # HOSTILE: Stay to block opponent's access
+                if other_pos and diamonds_remain:
+                    for diamond_pos in state.diamonds:
+                        if pos == diamond_pos or (other_pos < diamond_pos < pos) or (other_pos > diamond_pos > pos):
+                            reasons.append("hostile_block")
+                            break
+
+            # Include move if there's ANY rational strategy that supports it
+            if reasons:
+                rational_moves.append(action)
+
+        # If no moves had strategic justification, allow all (better safe than sorry)
+        if not rational_moves:
+            rational_moves = actions
+
+        # Only absolute filter: Don't stay if all diamonds collected AND both players should exit
+        if all_diamonds_collected and at_exit and my_utility > 0:
+            rational_moves = [a for a in rational_moves if a != "S"]
+
+        return rational_moves if rational_moves else actions
 
     def apply_action(self, player: str, action: str, state: GameState) -> Tuple[GameState, str]:
         """Apply action for player on a deep copy of state and return (new_state, event_description)."""
@@ -192,13 +251,12 @@ class MineGameTree:
             if new_pos in EXITS:
                 s.adjacent_count[player] += 1
 
-            # Check for crush
+            # Check for crush - but crushed robot does NOT die
             if s.pos.get(other) == new_pos and not s.exited[other]:
-                s.utility[other] = -100
+                s.utility[other] -= 100
                 s.pos[player] = new_pos
                 event.append(f"{player} moves to {new_pos} and crushes {other} (-100 for {other})")
-                s.exited[other] = True
-                s.pos[other] = None
+                # Crushed robot stays at the same position and can continue playing
 
                 # Crusher collects diamond if present
                 if new_pos in s.diamonds:
@@ -234,29 +292,6 @@ class MineGameTree:
                 return False
         return True
 
-    def should_prune_subtree(self, state: GameState) -> bool:
-        """
-        Determine if we should prune this entire subtree.
-        Prune if: all diamonds collected and both robots have exited or are at exits.
-        """
-        if not self.prune_nonsensical:
-            return False
-
-        # If both robots exited, it's terminal (not pruned, just terminal)
-        if state.exited["R1"] and state.exited["R2"]:
-            return False
-
-        # If all diamonds collected and at least one robot has exited
-        if len(state.diamonds) == 0:
-            # Check remaining robot
-            for p in ["R1", "R2"]:
-                if not state.exited[p]:
-                    # If remaining robot is at an exit and has positive utility, they should exit
-                    # This will be handled by the terminal check
-                    return False
-
-        return False
-
     def build_tree(self):
         """Build the complete game tree starting from initial state."""
         initial = self.initial_state()
@@ -269,14 +304,6 @@ class MineGameTree:
 
     def _explore(self, node: TreeNode):
         """Recursively explore and build the game tree."""
-        # Check for early pruning
-        if self.should_prune_subtree(node.state):
-            node.is_terminal = True
-            node.pruned = True
-            self.pruned_count += 1
-            self.terminal_nodes.append(node)
-            return
-
         if self.is_terminal(node.state):
             node.is_terminal = True
             self.terminal_nodes.append(node)
@@ -290,7 +317,7 @@ class MineGameTree:
 
         actions = self.legal_actions_for(player, node.state)
 
-        # Filter to sensible actions
+        # Filter to sensible actions (allows diverse strategies)
         actions = self.filter_sensible_actions(player, actions, node.state)
 
         if not actions:
@@ -364,12 +391,12 @@ class MineGameTree:
 
 # Main execution
 if __name__ == "__main__":
-    print("Building tree WITH pruning...")
+    print("Building tree with diverse strategies (hostile + defensive)...")
     game_tree_pruned = MineGameTree(prune_nonsensical=True)
     root_pruned = game_tree_pruned.build_tree()
     game_tree_pruned.print_summary()
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("\nBuilding tree WITHOUT pruning...")
     game_tree_full = MineGameTree(prune_nonsensical=False)
     root_full = game_tree_full.build_tree()

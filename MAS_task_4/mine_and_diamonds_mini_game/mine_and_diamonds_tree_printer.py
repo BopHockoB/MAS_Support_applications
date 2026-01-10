@@ -1,6 +1,6 @@
 """
-Visualization utilities for the Mine Game Tree.
-Requires: pip install networkx matplotlib graphviz
+
+Requires pip install networkx matplotlib graphviz
 """
 
 import networkx as nx
@@ -49,8 +49,10 @@ def tree_to_networkx(root, max_depth: Optional[int] = None, vert_gap: float = 0.
         G.add_node(node.node_id)
         labels[node.node_id] = node_label
 
-        # Color nodes: crush events in red, terminal in coral, pruned in gray, others in blue
-        if node.action and "crushes" in node.action[2].lower():
+        # Color nodes: diamond collection in yellow, crush events in red, terminal in coral, pruned in gray, others in blue
+        if node.action and "collects diamond" in node.action[2].lower():
+            colors.append('yellow')
+        elif node.action and "crushes" in node.action[2].lower():
             colors.append('red')
         elif hasattr(node, 'pruned') and node.pruned:
             colors.append('lightgray')
@@ -177,7 +179,10 @@ def plot_tree(root, max_depth: Optional[int] = None,
         labels[node.node_id] = node_label
 
         # Color by event type and terminal status
-        if node.action and "crushes" in node.action[2].lower():
+        # Priority: diamond collection > crush > pruned > terminal > default
+        if node.action and "collects diamond" in node.action[2].lower():
+            colors.append('yellow')
+        elif node.action and "crushes" in node.action[2].lower():
             colors.append('salmon')
         elif hasattr(node, 'pruned') and node.pruned:
             colors.append('lightgray')
@@ -230,6 +235,6 @@ if __name__ == "__main__":
 
     # Plot with utilities
     print("\nPlotting pruned tree with utilities (depth ≤ 10)...")
-    plot_tree(root, max_depth=10, figsize=(30, 21),
+    plot_tree(root, max_depth=10, figsize=(60, 21),
               node_size=4000, font_size=12,
               save_path="game_tree_utilities.png")

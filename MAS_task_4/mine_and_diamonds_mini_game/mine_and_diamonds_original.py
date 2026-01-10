@@ -15,7 +15,7 @@ START_POS = {"R1": 1, "R2": 3}  # starting positions (from conversation)
 # - "R": move right (pos+1)
 # - "S": stay (allowed at most once per robot)
 # - "E": exit (allowed only if pos in EXITS)
-# Note: if a robot is forced to exit (second time adjacent to exit), only E is allowed.
+# if a robot is forced to exit (second time adjacent to exit), only E is allowed.
 
 # We'll represent a state as a dictionary:
 # {
@@ -58,7 +58,7 @@ def legal_actions_for(player, state):
     pos = state["pos"][player]
     actions = []
 
-    # Forced exit: if adjacent_count >= 2, must exit
+    # if adjacent_count >= 2, must exit
     if pos in EXITS and state["adjacent_count"][player] >= 2:
         return ["E"]
 
@@ -91,7 +91,7 @@ def apply_action(player, action, state):
         event.append(f"{player} stays at {pos}")
         # no immediate payoff unless crushed later
     elif action == "E":
-        # Exit: robot collects +50 on top of accumulated utility and is removed from game
+        # Exited robot collects +50 on top of accumulated utility and is removed from game
         s["utility"][player] += 50
         s["exited"][player] = True
         s["pos"][player] = None
@@ -105,24 +105,19 @@ def apply_action(player, action, state):
 
         # If other robot occupies new_pos => crush the occupant
         if s["pos"].get(other) == new_pos and not s["exited"][other]:
-            # occupant crushed: loses all previous utility and gets -100 penalty
+            # occupant crushed
             s["utility"][other] = -100
 
-            # moving robot moves into new position; moving robot gets no utility change from crush
+            # moving robot moves into new position
             s["pos"][player] = new_pos
             event.append(f"{player} moves to {new_pos} and crushes {other} (-100 for {other})")
             # Mark crushed robot as exited (they're out of the game)
             s["exited"][other] = True
             s["pos"][other] = None
 
-            # If there was a diamond at new_pos and hasn't been collected yet, check whether crusher collects it:
-            # Rule: "If a robot steps on a diamond it will collect it" -- moving robot steps on the location, so yes.
-            if new_pos in s["diamonds"]:
-                s["diamonds"].remove(new_pos)
-                s["utility"][player] += 100
-                event.append(f"{player} collects diamond at {new_pos} (+100)")
         else:
-            # normal movement; if diamond present, collect
+            # normal movement
+            # if diamond present, collect
             s["pos"][player] = new_pos
             event.append(f"{player} moves to {new_pos}")
             if new_pos in s["diamonds"]:
@@ -179,7 +174,7 @@ def explore(state, history_actions):
         explore(new_state, history_actions + [(player, a, event)])
 
 
-# Run the exhaustive enumeration
+# Run the enumeration
 start = initial_state()
 explore(start, [])
 
@@ -187,7 +182,6 @@ explore(start, [])
 num_terminal = len(terminal_histories)
 print(f"Number of distinct terminal histories (outcomes found): {num_terminal}\n")
 
-# Print a few sample terminal histories and their payoffs
 print("Sample terminal histories:\n")
 for i, (hist, st) in enumerate(terminal_histories):
     print(f"Outcome #{i + 1}:")
